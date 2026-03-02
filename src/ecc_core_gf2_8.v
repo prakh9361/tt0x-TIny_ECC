@@ -24,6 +24,7 @@ module ecc_core_gf2_8 (
     reg [7:0] xr, yr;       // Working Point R (Accumulator)
     reg [7:0] lam, temp;    // Slope and temporary storage
     reg [2:0] bit_idx;      // Tracks which bit of K we are on (6 down to 0)
+    reg [7:0] x1_saved;
 
     // --- FSM States ---
     localparam IDLE       = 5'd0;
@@ -79,7 +80,7 @@ module ecc_core_gf2_8 (
             DBL_LAM_2: begin alu_a = temp; alu_b = xr; alu_op = 2'b00; end                   // (inv(x)*y) + x
             DBL_X3_1:  begin alu_a = lam; alu_op = 2'b01; end                                // lam^2
             DBL_X3_2:  begin alu_a = temp; alu_b = lam ^ CURVE_A; alu_op = 2'b00; end        // lam^2 + lam + a
-            DBL_Y3_1:  begin alu_a = xr; alu_op = 2'b01; end                                 // x1^2
+            DBL_Y3_1:  begin alu_a = x1_saved; alu_op = 2'b01; end                                 // x1^2 <- was xr
             DBL_Y3_2:  begin alu_a = lam; alu_b = xr; alu_op = 2'b10; end                    // lam * x3 (using xr as x3 is updated later)
             DBL_Y3_3:  begin alu_a = temp; alu_b = xr ^ yr; alu_op = 2'b00; end              // x1^2 + lam*x3 + x3
             
@@ -171,6 +172,7 @@ module ecc_core_gf2_8 (
                         state <= DONE_STATE;
                     end else begin
                         bit_idx <= bit_idx - 1;
+                        x1_saved <= xr;
                         state <= DBL_LAM_1;
                     end
                 end
