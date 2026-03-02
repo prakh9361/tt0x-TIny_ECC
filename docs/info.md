@@ -9,13 +9,11 @@ You can also include images in this folder and reference them in the markdown. E
 
 ## How it works
 
-Explain how your project works
-test
+pvt ot public key
 
 ## How to test
 
-Explain how to use your project
-test
+give pvt get public 
 
 ## External hardware
 
