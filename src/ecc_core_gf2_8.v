@@ -80,18 +80,20 @@ module ecc_core_gf2_8 (
             DBL_LAM_2: begin alu_a = temp; alu_b = xr; alu_op = 2'b00; end                   // (inv(x)*y) + x
             DBL_X3_1:  begin alu_a = lam; alu_op = 2'b01; end                                // lam^2
             DBL_X3_2:  begin alu_a = temp; alu_b = lam ^ CURVE_A; alu_op = 2'b00; end        // lam^2 + lam + a
-            DBL_Y3_1:  begin alu_a = x1_saved; alu_op = 2'b01; end                                 // x1^2 <- was xr
+            DBL_Y3_1:  begin alu_a = x1_saved; alu_op = 2'b01; end                           // x1^2 <- was xr
             DBL_Y3_2:  begin alu_a = lam; alu_b = xr; alu_op = 2'b10; end                    // lam * x3 (using xr as x3 is updated later)
-            DBL_Y3_3:  begin alu_a = temp; alu_b = xr ^ yr; alu_op = 2'b00; end              // x1^2 + lam*x3 + x3
+            // [FIXED] Removed the erroneous "^ yr" from the doubling Y3 calculation
+            DBL_Y3_3:  begin alu_a = temp; alu_b = xr; alu_op = 2'b00; end                   // x1^2 + lam*x3 + x3
             
             // Addition Routing: lambda = (y1 + y2) * (x1 + x2)^-1
             ADD_LAM_1: begin alu_a = xr; alu_b = xg; alu_op = 2'b00; end                     // x1 + x2
             ADD_LAM_2: begin rom_addr = temp; alu_a = inv_out; alu_b = yr ^ yg; alu_op = 2'b10; end // inv(x1+x2) * (y1+y2)
             ADD_X3_1:  begin alu_a = lam; alu_op = 2'b01; end                                // lam^2
             ADD_X3_2:  begin alu_a = temp; alu_b = lam ^ xr ^ xg ^ CURVE_A; alu_op = 2'b00; end
-            ADD_Y3_1:  begin alu_a = xr; alu_b = temp; alu_op = 2'b00; end                   // x1 + x3
+            // [FIXED] Changed alu_a from 'xr' to 'x1_saved' since xr gets overwritten by x3 in ADD_X3_2
+            ADD_Y3_1:  begin alu_a = x1_saved; alu_b = temp; alu_op = 2'b00; end             // x1 + x3
             ADD_Y3_2:  begin alu_a = lam; alu_b = temp; alu_op = 2'b10; end                  // lam * (x1 + x3)
-            ADD_Y3_3:  begin alu_a = temp; alu_b = xr ^ yr; alu_op = 2'b00; end              // lam*(x1+x3) + x3 + y1
+            ADD_Y3_3:  begin alu_a = temp; alu_b = xr ^ yr; alu_op = 2'b00; end              // lam*(x1+x3) + x3 + y1 (xr holds x3 here)
 
             default: ;
         endcase
@@ -155,6 +157,8 @@ module ecc_core_gf2_8 (
 
                 // --- Point Addition Sequence ---
                 ADD_CHK: begin
+                    // [FIXED] Save the old x1 before it gets permanently overwritten in ADD_X3_2
+                    x1_saved <= xr; 
                     if (k[bit_idx] == 1'b1) state <= ADD_LAM_1;
                     else state <= NEXT_BIT;
                 end
