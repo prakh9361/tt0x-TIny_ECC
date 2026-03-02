@@ -43,7 +43,7 @@ async def start_and_wait(dut, timeout=200):
     for _ in range(timeout):
         await RisingEdge(dut.clk)
         # done = uio_out[5]
-        if (dut.uio_out.value >> 5) & 1:
+        if (int(dut.uio_out.value) >> 5) & 1:
             return True
     return False  # timeout
 
@@ -58,19 +58,21 @@ def read_result(dut):
 @cocotb.test()
 async def test_reset_state(dut):
     """Outputs should be 0 after reset, not busy or done."""
-    clock = Clock(dut.clk, 10, units="us")
+    clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
     await reset_dut(dut)
 
     assert dut.uo_out.value == 0
-    assert (dut.uio_out.value >> 5) & 1 == 0, "done should be 0 after reset"
-    assert (dut.uio_out.value >> 6) & 1 == 0, "busy should be 0 after reset"
+    assert (int(dut.uio_out.value) >> 5) & 1 == 0, "done should be 0 after reset"
+    assert (int(dut.uio_out.value) >> 6) & 1 == 0, "busy should be 0 after reset"
+
 
 
 @cocotb.test()
 async def test_scalar_mult_k1(dut):
     """k=1: result should equal the base point G (no doubling, just G)."""
-    clock = Clock(dut.clk, 10, units="us")
+    # All 4 clock lines — change units= to unit=
+    clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
     await reset_dut(dut)
 
@@ -98,7 +100,7 @@ async def test_scalar_mult_k1(dut):
 @cocotb.test()
 async def test_busy_flag(dut):
     """Busy should go high after start and low after done."""
-    clock = Clock(dut.clk, 10, units="us")
+    clock = Clock(dut.clk, 10, unit="us")
     cocotb.start_soon(clock.start())
     await reset_dut(dut)
 
@@ -109,11 +111,11 @@ async def test_busy_flag(dut):
     dut.uio_in.value = 0
     await ClockCycles(dut.clk, 1)
 
-    busy = (dut.uio_out.value >> 6) & 1
+    busy = (int(dut.uio_out.value) >> 6) & 1
     assert busy == 1, "busy should be high after start"
 
     await start_and_wait(dut)
-    busy = (dut.uio_out.value >> 6) & 1
+    busy = (int(dut.uio_out.value) >> 6) & 1
     assert busy == 0, "busy should be low after done"
 
 
