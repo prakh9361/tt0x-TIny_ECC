@@ -15,8 +15,9 @@ module ecc_core_gf2_8 (
     output reg        error
 );
 
-    // Curve Parameter 'a' for y^2 + xy = x^3 + ax^2 + b
-    localparam CURVE_A = 8'h01; 
+    // Curve Parameter 'a' , 'b' or y^2 + xy = x^3 + ax^2 + b
+    localparam CURVE_A = 8'h01;
+    localparam CURVE_B = 8'h01;
 
     // --- Registers ---
     reg [7:0] k;            // Private Key
@@ -25,7 +26,7 @@ module ecc_core_gf2_8 (
     reg [7:0] lam, temp;    // Slope and temporary storage
     reg [2:0] bit_idx;      // Tracks which bit of K we are on (6 down to 0)
     reg [7:0] x1_saved;
-    reg       r_is_inf;     // [NEW] Tracks if the working point R is at Infinity
+    reg       r_is_inf;     // Tracks if the working point R is at Infinity
 
     // --- FSM States ---
     localparam IDLE       = 5'd0;
@@ -50,6 +51,13 @@ module ecc_core_gf2_8 (
     // Loop Control
     localparam NEXT_BIT   = 5'd16;
     localparam DONE_STATE = 5'd17;
+
+    // verification states
+    localparam VAL_Y2     = 5'd19;
+    localparam VAL_XY     = 5'd20;
+    localparam VAL_LEFT   = 5'd21;
+    localparam VAL_X2     = 5'd22;
+    localparam VAL_X3     = 5'd23;
 
     reg [4:0] state;
 
@@ -104,7 +112,7 @@ module ecc_core_gf2_8 (
             result_x <= 0; result_y <= 0;
             done <= 0; busy <= 0; error <= 0;
             bit_idx <= 0;
-            r_is_inf <= 0; // [NEW] Reset infinity flag
+            r_is_inf <= 0; // Reset infinity flag
         end else begin
             if (load_k) k <= data_in;
             if (load_x) xg <= data_in;
@@ -112,11 +120,31 @@ module ecc_core_gf2_8 (
 
             case (state)
                 IDLE: begin
-                    done <= 0; error <= 0;
+                    done <= 0;
+                    error <= 0;
                     if (start) begin
                         busy <= 1;
+                        state <= VAL_Y2; // Jump to validation first
+                    end
+                end
+
+                // --- Point Validation Sequence ---
+                VAL_Y2:   begin temp <= alu_out; state <= VAL_XY; end
+                VAL_XY:   begin lam <= alu_out; state <= VAL_LEFT; end
+                VAL_LEFT: begin temp <= alu_out; state <= VAL_X2; end   // temp now holds left side (y^2 + xy)
+                VAL_X2:   begin lam <= alu_out; state <= VAL_X3; end    // lam now holds x^2
+                VAL_X3: begin 
+                    // alu_out is x^3. Since a=1, ax^2 = lam. 
+                    // Right side: x^3 + ax^2 + b = alu_out ^ lam ^ CURVE_B
+                    // Compare Left (temp) == Right
+                    if ((temp ^ alu_out ^ lam ^ CURVE_B) == 8'b0) begin
                         bit_idx <= 7;      
-                        state <= SCAN_BIT; 
+                        state <= SCAN_BIT; // Point is valid, start multiplication
+                    end else begin
+                        error <= 1;        // Point is NOT on the curve
+                        done <= 1;
+                        busy <= 0;
+                        state <= IDLE;
                     end
                 end
 
