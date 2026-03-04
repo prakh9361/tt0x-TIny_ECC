@@ -57,7 +57,13 @@ def find_valid_base_point():
                 return x, y
     raise ValueError("No valid points found on this curve!")
 
+
 def point_double(x1, y1):
+    # If the point is already at infinity (0,0) 
+    # OR if the point has a vertical tangent (X=0)
+    if x1 == 0: 
+        return 0, 0
+
     lam = gf_add(x1, gf_mult(y1, gf_inv(x1)))
     lam_sq = gf_mult(lam, lam)
     x3 = gf_add(gf_add(lam_sq, lam), CURVE_A)
