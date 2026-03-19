@@ -9,8 +9,8 @@ from cocotb.triggers import ClockCycles, RisingEdge
 # PYTHON GOLDEN MODEL FOR GF(2^8) ECC
 # =========================================================================
 POLY = 0x11B
-CURVE_A = 0x01
-CURVE_B = 0x01  # <--- Updated to match your RTL
+CURVE_A = 0x20
+CURVE_B = 0x01  
 
 def gf_add(a, b):
     return a ^ b
