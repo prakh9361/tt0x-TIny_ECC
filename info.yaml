@@ -1,9 +1,9 @@
 # Tiny Tapeout project information
 project:
-  title:        "ECC"      # Project title
-  author:       "Prakhar"      # Your name
+  title:        "Tiny_ECC"      # Project title
+  author:       "Prakhar Pranav"      # Your name
   discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
-  description:  "pvt to public key for eliptical curve cryptography"      # One line description of what your project does
+  description:  "private to public key for eliptical curve cryptography"      # One line description of what your project does
   language:     "Verilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
   clock_hz:     0       # Clock frequency in Hz (or 0 if not applicable)
 
@@ -38,13 +38,13 @@ pinout:
 
   # Outputs
   uo[0]: "data_out[0]"
-  uo[1]: "data_out[0]"
-  uo[2]: "data_out[0]"
-  uo[3]: "data_out[0]"
-  uo[4]: "data_out[0]"
-  uo[5]: "data_out[0]"
-  uo[6]: "data_out[0]"
-  uo[7]: "data_out[0]"
+  uo[1]: "data_out[1]"
+  uo[2]: "data_out[2]"
+  uo[3]: "data_out[3]"
+  uo[4]: "data_out[4]"
+  uo[5]: "data_out[5]"
+  uo[6]: "data_out[6]"
+  uo[7]: "data_out[7]"
 
   # Bidirectional pins
   uio[0]: "input: load_k"
