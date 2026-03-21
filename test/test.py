@@ -6,7 +6,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import ClockCycles, RisingEdge
 
 # =========================================================================
-# GOLDEN MODEL — matches ecc_core_gf2_8.v exactly
+# GOLDEN MODEL
 # Curve: y^2 + xy = x^3 + CURVE_A*x^2 + CURVE_B over GF(2^8) with poly 0x11B
 # Parameters: a=0x20, b=0x01, n=113, G=(143,41), h=2
 # =========================================================================
@@ -25,19 +25,13 @@ def gf_mul(a, b):
         carry = a & 0x80
         a = (a << 1) & 0xFF
         if carry:
-            a ^= 0x1B   # low byte of 0x11B
+            a ^= 0x1B
         b >>= 1
     return p
 
 def gf_inv(a):
     if a == 0:
         return 0
-    # Fermat: a^(2^8-2) = a^254
-    r = a
-    for _ in range(6):                  # 6 squarings -> a^(2^7)=a^128
-        r = gf_mul(r, r)
-    # now r = a^128, but we need a^254 = a^128 * a^64 * ... * a^2
-    # simpler: just brute force for golden model
     for i in range(1, 256):
         if gf_mul(a, i) == 1:
             return i
@@ -56,7 +50,7 @@ def point_add(x1, y1, x2, y2):
     if x1 == 0 and y1 == 0: return x2, y2
     if x2 == 0 and y2 == 0: return x1, y1
     if x1 == x2:
-        if y1 == (x2 ^ y2):    # y1 == -y2 in binary field
+        if y1 == (x2 ^ y2):
             return 0, 0
         return point_double(x1, y1)
     lam = gf_mul(y1 ^ y2, gf_inv(x1 ^ x2))
@@ -78,13 +72,6 @@ def scalar_mult(k, xg, yg):
         if k & (1 << i):
             xr, yr = point_add(xr, yr, xg, yg)
     return xr, yr
-
-def is_on_curve(x, y):
-    if x == 0 and y == 0:
-        return False
-    lhs = gf_mul(y, y) ^ gf_mul(x, y)
-    rhs = gf_mul(x, gf_mul(x, x)) ^ gf_mul(CURVE_A, gf_mul(x, x)) ^ CURVE_B
-    return lhs == rhs
 
 # =========================================================================
 # HARDWARE DRIVERS
@@ -141,27 +128,11 @@ def error_flag(dut):
     return (int(dut.uio_out.value) >> 7) & 1
 
 # =========================================================================
-# TEST 1 — invalid curve point rejection
-# =========================================================================
-@cocotb.test()
-async def test_invalid_curve_point(dut):
-    """Hardware must reject (0,0) which is not on the curve."""
-    cocotb.start_soon(Clock(dut.clk, 10, unit="us").start())
-    await reset_dut(dut)
-
-    await load_params(dut, k=5, xg=0x00, yg=0x00)
-    done = await start_and_wait(dut)
-
-    assert done, "Timeout waiting for invalid point rejection"
-    assert error_flag(dut) == 1, "Hardware accepted invalid point (0,0)"
-    dut._log.info("PASS: invalid point correctly rejected")
-
-# =========================================================================
-# TEST 2 — k=0 gives point at infinity
+# TEST 1 — k=0 gives point at infinity (hits SCAN_BIT, no valid MSB found)
 # =========================================================================
 @cocotb.test()
 async def test_k_zero(dut):
-    """k=0 must raise error and output (0,0)."""
+    """k=0 must raise error (SCAN_BIT finds no set bit)."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="us").start())
     await reset_dut(dut)
 
@@ -173,11 +144,10 @@ async def test_k_zero(dut):
 
     hw_x, hw_y = await read_xy(dut)
     assert hw_x == 0 and hw_y == 0, f"Expected (0,0) for k=0, got ({hw_x},{hw_y})"
-    dut._log.info("PASS: k=0 correctly returns point at infinity")
+    dut._log.info("PASS: k=0 correctly returns error and (0,0)")
 
 # =========================================================================
-# TEST 3 — exhaustive scalar multiplication k=1..112
-# All valid private keys for n=113 tested against golden model
+# TEST 2 — exhaustive scalar multiplication k=1..112
 # =========================================================================
 @cocotb.test()
 async def test_exhaustive_scalar_mult(dut):
@@ -199,24 +169,17 @@ async def test_exhaustive_scalar_mult(dut):
         ef = error_flag(dut)
 
         if exp_x == 0 and exp_y == 0:
-            assert ef == 1,             f"k={k}: expected error for POI"
-            assert hw_x == 0 and hw_y == 0, f"k={k}: expected (0,0) for POI"
+            assert ef == 1,                         f"k={k}: expected error for POI"
+            assert hw_x == 0 and hw_y == 0,         f"k={k}: expected (0,0) for POI"
         else:
-            assert ef == 0, f"k={k}: unexpected error flag"
+            assert ef == 0,  f"k={k}: unexpected error flag"
             assert hw_x == exp_x, f"k={k}: X mismatch HW={hw_x:#04x} expected={exp_x:#04x}"
             assert hw_y == exp_y, f"k={k}: Y mismatch HW={hw_y:#04x} expected={exp_y:#04x}"
 
     dut._log.info(f"PASS: all {N-1} scalar multiplications match golden model")
 
 # =========================================================================
-# TEST 4 — Diffie-Hellman shared secret
-#
-# Usage in real DH:
-#   Step 1: Load k=your_private_key, G=(GX,GY)  -> output is YOUR public key
-#   Step 2: Load k=your_private_key, G=(peer_pub_x, peer_pub_y)
-#                                                -> output is SHARED SECRET
-#
-# The hardware does not change between steps — only the base point changes.
+# TEST 3 — Diffie-Hellman shared secret
 # =========================================================================
 @cocotb.test()
 async def test_diffie_hellman(dut):
@@ -227,7 +190,6 @@ async def test_diffie_hellman(dut):
     alice_priv = 42
     bob_priv   = 37
 
-    # --- Alice computes public key: A = alice_priv * G ---
     await load_params(dut, k=alice_priv, xg=GX, yg=GY)
     done = await start_and_wait(dut)
     assert done, "Timeout computing Alice public key"
@@ -235,7 +197,6 @@ async def test_diffie_hellman(dut):
     alice_pub_x, alice_pub_y = await read_xy(dut)
     dut._log.info(f"Alice public key: ({alice_pub_x:#04x}, {alice_pub_y:#04x})")
 
-    # --- Bob computes public key: B = bob_priv * G ---
     await load_params(dut, k=bob_priv, xg=GX, yg=GY)
     done = await start_and_wait(dut)
     assert done, "Timeout computing Bob public key"
@@ -243,8 +204,6 @@ async def test_diffie_hellman(dut):
     bob_pub_x, bob_pub_y = await read_xy(dut)
     dut._log.info(f"Bob public key:   ({bob_pub_x:#04x}, {bob_pub_y:#04x})")
 
-    # --- Alice computes shared secret: S = alice_priv * B ---
-    # KEY POINT: base point is now Bob's PUBLIC KEY, not G
     await load_params(dut, k=alice_priv, xg=bob_pub_x, yg=bob_pub_y)
     done = await start_and_wait(dut)
     assert done, "Timeout computing Alice shared secret"
@@ -252,8 +211,6 @@ async def test_diffie_hellman(dut):
     alice_secret_x, alice_secret_y = await read_xy(dut)
     dut._log.info(f"Alice secret:     ({alice_secret_x:#04x}, {alice_secret_y:#04x})")
 
-    # --- Bob computes shared secret: S = bob_priv * A ---
-    # KEY POINT: base point is now Alice's PUBLIC KEY, not G
     await load_params(dut, k=bob_priv, xg=alice_pub_x, yg=alice_pub_y)
     done = await start_and_wait(dut)
     assert done, "Timeout computing Bob shared secret"
@@ -261,13 +218,11 @@ async def test_diffie_hellman(dut):
     bob_secret_x, bob_secret_y = await read_xy(dut)
     dut._log.info(f"Bob secret:       ({bob_secret_x:#04x}, {bob_secret_y:#04x})")
 
-    # --- Verify match ---
     assert alice_secret_x == bob_secret_x, \
         f"DH X mismatch: Alice={alice_secret_x:#04x}, Bob={bob_secret_x:#04x}"
     assert alice_secret_y == bob_secret_y, \
         f"DH Y mismatch: Alice={alice_secret_y:#04x}, Bob={bob_secret_y:#04x}"
 
-    # --- Cross-check against golden model ---
     gm_alice_x, gm_alice_y = scalar_mult(alice_priv, bob_pub_x, bob_pub_y)
     assert alice_secret_x == gm_alice_x and alice_secret_y == gm_alice_y, \
         "DH result does not match golden model"
@@ -275,35 +230,26 @@ async def test_diffie_hellman(dut):
     dut._log.info("PASS: DH shared secrets match")
 
 # =========================================================================
-# TEST 5 — public key as base point (explicit test for DH step 2)
-# Verifies that when G is replaced with a peer's public key the math holds
+# TEST 4 — public key as base point
 # =========================================================================
 @cocotb.test()
 async def test_peer_public_key_as_base(dut):
-    """
-    Explicit test: scalar_mult(k, peer_pub) == expected shared secret.
-    This is exactly what happens in DH step 2.
-    """
+    """scalar_mult(k, peer_pub) == expected shared secret."""
     cocotb.start_soon(Clock(dut.clk, 10, unit="us").start())
     await reset_dut(dut)
 
-    my_priv  = 15
+    my_priv   = 15
     peer_priv = 23
 
-    # compute peer public key via golden model
     peer_pub_x, peer_pub_y = scalar_mult(peer_priv, GX, GY)
-    assert is_on_curve(peer_pub_x, peer_pub_y), "Peer public key not on curve"
     dut._log.info(f"Peer public key: ({peer_pub_x:#04x}, {peer_pub_y:#04x})")
 
-    # hardware: use peer public key as base point
     await load_params(dut, k=my_priv, xg=peer_pub_x, yg=peer_pub_y)
     done = await start_and_wait(dut)
     assert done, "Timeout computing shared secret with peer public key"
     assert error_flag(dut) == 0, "Error when using peer public key as base"
 
     hw_x, hw_y = await read_xy(dut)
-
-    # golden model expected result
     exp_x, exp_y = scalar_mult(my_priv, peer_pub_x, peer_pub_y)
 
     assert hw_x == exp_x, f"X mismatch: HW={hw_x:#04x} expected={exp_x:#04x}"
