@@ -101,14 +101,17 @@ async def load_params(dut, k, xg, yg):
 
     dut.uio_in.value = 0
 
+# BUG FIX: poll busy going low instead of the 1-cycle done pulse.
+# done pulses for exactly one clock cycle and is easily missed.
 async def start_and_wait(dut, timeout=2000):
     dut.uio_in.value = 0b00001000   # start
     await ClockCycles(dut.clk, 1)
     dut.uio_in.value = 0
+    await ClockCycles(dut.clk, 2)   # let busy go high
 
     for _ in range(timeout):
         await RisingEdge(dut.clk)
-        if (int(dut.uio_out.value) >> 5) & 1:   # done flag
+        if not ((int(dut.uio_out.value) >> 6) & 1):   # busy low = done
             return True
     return False
 
