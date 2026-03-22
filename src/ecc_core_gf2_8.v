@@ -33,7 +33,7 @@ module ecc_core_gf2_8 (
     reg [2:0] bit_idx;
     reg [7:0] x1_saved;
     reg       r_is_inf;
-    reg       dbl_only;
+    reg       dbl_only;   // skip ADD_CHK after doubling when R==G
 
     // --- FSM States ---
     localparam IDLE       = 5'd0;
@@ -185,11 +185,8 @@ module ecc_core_gf2_8 (
                 // ---------------------------------------------------
                 // Point Addition
 
-                // BUG FIX: removed redundant x1_saved <= xr here;
-                // x1_saved is already set in NEXT_BIT before entering DBL_LAM_1,
-                // and in DBL_LAM_1 for the doubling path. Overwriting it here
-                // corrupted the saved pre-add xr when R==G triggered a re-double.
                 ADD_CHK: begin
+                    x1_saved <= xr;
                     if (k[bit_idx] == 1'b1) begin
                         if (r_is_inf) begin
                             xr <= xg; yr <= yg; r_is_inf <= 1'b0;
@@ -219,7 +216,7 @@ module ecc_core_gf2_8 (
                 ADD_Y3_2:  begin temp <= alu_out; state <= ADD_Y3_3;  end
                 ADD_Y3_3:  begin yr   <= alu_out; state <= NEXT_BIT;  end
 
-
+                // ---------------------------------------------------
                 NEXT_BIT: begin
                     if (bit_idx == 0) begin
                         state <= DONE_STATE;
@@ -228,6 +225,8 @@ module ecc_core_gf2_8 (
                         x1_saved <= xr;
                         if (r_is_inf) begin
                             state <= ADD_CHK;
+                        end else if (xr == 8'b0) begin
+                            r_is_inf <= 1'b1; state <= ADD_CHK;
                         end else begin
                             state <= DBL_LAM_1;
                         end
